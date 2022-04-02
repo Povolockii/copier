@@ -3,6 +3,8 @@
 
 #include <QMainWindow>
 
+#include "engine.h"
+
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
 QT_END_NAMESPACE
@@ -22,12 +24,23 @@ private slots:
 
     void on_pushButton_cancel_clicked();
 
-    void on_progressBar_valueChanged(int value);
+    void _on_progress(int);
+
+    void _on_speedBytesSec(int);
+
+    void _on_finished(QList<Engine::Result>);
+
+signals:
+    void run(QString, QString);
+    void cancelRun();
 
 private:
     void reset();
 
 private:
     Ui::MainWindow *ui;
+
+    Engine* m_engine;
+    QThread m_engineThread;
 };
 #endif // MAINWINDOW_H

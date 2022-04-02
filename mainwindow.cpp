@@ -16,13 +16,29 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
-    reset();
+    m_engine = new Engine();
+    m_engine->moveToThread(&m_engineThread);
 
-    qInfo() << "start";
+    connect(this, &MainWindow::run, m_engine, &Engine::_on_run);
+    connect(this, &MainWindow::cancelRun, m_engine, &Engine::_on_cancel);
+    connect(m_engine, &Engine::progress, this, &MainWindow::_on_progress);
+    connect(m_engine, &Engine::speedBytesSec, this, &MainWindow::_on_speedBytesSec);
+    connect(m_engine, &Engine::finished, this, &MainWindow::_on_finished);
+    connect(&m_engineThread, &QThread::finished, m_engine, &QObject::deleteLater);
+
+    m_engineThread.start();
+
+    reset();
+    qInfo() << "start app";
 }
 
 MainWindow::~MainWindow()
 {
+    m_engineThread.quit();
+    m_engineThread.wait();
+
+    qInfo() << "stop app";
+
     delete ui;
 }
 
@@ -41,60 +57,83 @@ void MainWindow::on_pushButton_select_clicked()
         return;
     }
 
-    QString result = ui->radioButton_dir->isChecked() ? QFileDialog::getExistingDirectory(this, tr("Result dir")) :
-                                                        QFileDialog::getOpenFileName(this, tr("Result file"));
-    if (result.isEmpty()) {
-        errMessage("result");
+    QString target = QFileDialog::getExistingDirectory(this, tr("target dir"));
+    if (target.isEmpty()) {
+        errMessage("target");
         return;
     }
 
     ui->label_source->setProperty("path", source);
-    ui->label_result->setProperty("path", result);
+    ui->label_target->setProperty("path", target);
 
     ui->label_source->setText(label_path.arg("source").arg(source));
-    ui->label_result->setText(label_path.arg("result").arg(result));
+    ui->label_target->setText(label_path.arg("target").arg(target));
 
     ui->radioButton_dir->setEnabled(false);
     ui->radioButton_file->setEnabled(false);
 
     ui->pushButton_run->setEnabled(true);
-    ui->pushButton_cancel->setEnabled(true);
 
     ui->pushButton_select->setEnabled(false);
 
-    qInfo() << "select source " << source << "      result" << result;
+    qInfo() << "select source " << source << "      target" << target;
 }
 
 void MainWindow::on_pushButton_run_clicked()
 {
     qInfo() << "run start";
 
-    QString source = ui->label_source->property("path").toString();
-    QString result = ui->label_result->property("path").toString();
+    ui->pushButton_run->setEnabled(false);
+    ui->pushButton_cancel->setEnabled(true);
 
-    ui->progressBar->setValue(100);
-    qInfo() << "run end";
+    QString source = ui->label_source->property("path").toString();
+    QString target = ui->label_target->property("path").toString();
+    emit run(source, target);
 }
 
 void MainWindow::on_pushButton_cancel_clicked()
 {
+    qInfo() << "run cancel";
+
+    ui->pushButton_run->setEnabled(true);
+    ui->pushButton_cancel->setEnabled(false);
+
+    emit cancelRun();
+}
+
+void MainWindow::_on_finished(QList<Engine::Result> results)
+{
+    qInfo() << "run end";
+
+    QMessageBox msgBox;
+    msgBox.setText("Success!");
+    msgBox.exec();
+
     reset();
 }
 
-void MainWindow::on_progressBar_valueChanged(int value)
+void MainWindow::_on_progress(int v)
 {
-    if (value == ui->progressBar->minimum() || value == ui->progressBar->maximum()) {
-        reset();
-    }
+    qDebug() << "run progress " << v << "%";
+
+    ui->progressBar->setValue(v);
+}
+
+void MainWindow::_on_speedBytesSec(int value)
+{
+    QString speedStr(QString::number(value / 1024 / 1024));
+    ui->label_speed->setText(speedStr + " Mbyte/sec");
 }
 
 void MainWindow::reset()
 {
     ui->label_source->setText(label_path.arg("source").arg("empty"));
-    ui->label_result->setText(label_path.arg("result").arg("empty"));
+    ui->label_target->setText(label_path.arg("target").arg("empty"));
+    ui->label_speed->setText("");
     ui->radioButton_dir->setEnabled(true);
     ui->radioButton_file->setEnabled(true);
     ui->pushButton_select->setEnabled(true);
     ui->pushButton_run->setEnabled(false);
     ui->pushButton_cancel->setEnabled(false);
+    ui->progressBar->setValue(0);
 }
