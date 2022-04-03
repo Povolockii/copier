@@ -1,9 +1,9 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
-#include <QMainWindow>
-
 #include "engine.h"
+
+#include <QMainWindow>
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
@@ -19,16 +19,12 @@ public:
 
 private slots:
     void on_pushButton_select_clicked();
-
     void on_pushButton_run_clicked();
-
     void on_pushButton_cancel_clicked();
 
     void _on_progress(int);
-
     void _on_speedBytesSec(int);
-
-    void _on_finished(QList<Engine::Result>);
+    void _on_finished(bool canceled, const QList<Engine::Result>&);
 
 signals:
     void run(QString, QString);

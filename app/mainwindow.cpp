@@ -3,7 +3,6 @@
 
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QTime>
 #include <QDebug>
 
 namespace {
@@ -101,12 +100,33 @@ void MainWindow::on_pushButton_cancel_clicked()
     emit cancelRun();
 }
 
-void MainWindow::_on_finished(QList<Engine::Result> results)
+void MainWindow::_on_finished(bool canceled, const QList<Engine::Result> &results)
 {
     qInfo() << "run end";
 
+    QString outText;
+    if (!canceled) {
+        QStringList failed;
+        for (const auto& res : results) {
+            if (!res.success) {
+                failed.push_back(res.target);
+            }
+        }
+
+        if (failed.empty()) {
+            outText = "All files copied successfully!";
+        } else {
+            outText = "Failed to copy files:\n";
+            for (const auto& file : failed) {
+                outText += file + "\n\n";
+            }
+        }
+    } else {
+        outText = "File copying canceled";
+    }
+
     QMessageBox msgBox;
-    msgBox.setText("Success!");
+    msgBox.setText(outText);
     msgBox.exec();
 
     reset();
@@ -114,8 +134,7 @@ void MainWindow::_on_finished(QList<Engine::Result> results)
 
 void MainWindow::_on_progress(int v)
 {
-    qDebug() << "run progress " << v << "%";
-
+    qDebug() << "copy progress " << v << "%";
     ui->progressBar->setValue(v);
 }
 

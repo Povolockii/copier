@@ -3,7 +3,6 @@
 #include <QtConcurrent/QtConcurrent>
 #include <QMetaObject>
 #include <QThreadPool>
-#include <QStringList>
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
@@ -21,9 +20,9 @@ Engine::Engine(QObject *parent) : QObject{parent},
 
     connect(this, &Engine::progressTask, this, &Engine::_on_progressTask);
 
-    m_timerSpeed = new QTimer(this);
-    m_timerSpeed->setInterval(1000);
-    connect(m_timerSpeed, &QTimer::timeout, this, &Engine::_on_timeoutOfStatistics);
+    m_timerOfStatistics = new QTimer(this);
+    connect(m_timerOfStatistics, &QTimer::timeout, this, &Engine::_on_timeoutOfStatistics);
+    m_timerOfStatistics->start(1000);
 }
 
 void Engine::_on_run(QString source, QString target)
@@ -37,19 +36,23 @@ void Engine::_on_run(QString source, QString target)
     m_bytesOfStatistics = m_totalBytes;
 
     runTasks(tasks);
-    m_timerSpeed->start();
 }
 
 void Engine::_on_cancel()
 {
     m_canceled = true;
     QMetaObject::invokeMethod(this, "finished", Qt::QueuedConnection,
+                              Q_ARG(bool, true),
                               Q_ARG(QList<Engine::Result>, m_completedTasks));
     reset();
 }
 
 void Engine::_on_progressTask(int countBytes)
 {
+    if (m_totalBytes == 0) {
+        return;
+    }
+
     m_remainingBytes -= countBytes;
     const int curr_progress = double(m_totalBytes - m_remainingBytes) / m_totalBytes * 100;
     if (m_progress != curr_progress) {
@@ -74,8 +77,6 @@ void Engine::reset()
     m_remainingBytes = 0;
     m_progress = 0;
     m_bytesOfStatistics = 0;
-
-    m_timerSpeed->stop();
 }
 
 void Engine::fillTasks(QString source, QString target, QVector<QPair<QString, QString> >& tasks)
@@ -108,12 +109,17 @@ void Engine::runTasks(const QVector<QPair<QString, QString> > &tasks)
 
         QFuture<Result> resFuture = QtConcurrent::run(&m_pool, &Engine::copyFile, this, source, target);
         resFuture.then([this, source, target, tasks](Result&& result) {
+            std::lock_guard<std::mutex> l(m_mutex);
+
             m_completedTasks.push_back(result);
 
             if (tasks.size() == m_completedTasks.size() && m_canceled == false) {
-                QMetaObject::invokeMethod(this, "finished", Qt::QueuedConnection,
-                                          Q_ARG(QList<Engine::Result>, m_completedTasks));
+                const auto resTasks = m_completedTasks;
                 reset();
+
+                QMetaObject::invokeMethod(this, "finished", Qt::QueuedConnection,
+                                          Q_ARG(bool, false),
+                                          Q_ARG(QList<Engine::Result>, resTasks));
             }
         });
     }
@@ -145,21 +151,27 @@ Engine::Result Engine::copyFile(const QString &source, const QString &target)
             return result;
         }
 
-        constexpr int chunkSize = 2048;
+        constexpr int chunkSize = 4096;
         const auto data = fileSource.read(chunkSize);
+        if (data.size() == 0) {
+            qWarning() << "Cannot read data to file " << source;
+            return result;
+        }
         const auto writing = fileTarget.write(data);
+        if (writing < 0) {
+            qWarning() << "Cannot write data to file " << target;
+            return result;
+        }
 
         QMetaObject::invokeMethod(this, "progressTask", Qt::QueuedConnection,
                                   Q_ARG(int, writing));
 
         fPos = fileSource.pos();
     }
-    fileTarget.flush();
 
     fileSource.close();
     fileTarget.close();
 
-    qInfo() << "copy file " << target << " success";
     result.success = true;
     return result;
 }

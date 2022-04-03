@@ -1,12 +1,13 @@
 #ifndef ENGINE_H
 #define ENGINE_H
 
-#include <QObject>
+#include <atomic>
+
 #include <QList>
+#include <QTimer>
+#include <QObject>
 #include <QFuture>
 #include <QThreadPool>
-#include <QTimer>
-#include <atomic>
 
 class Engine : public QObject
 {
@@ -30,7 +31,7 @@ signals:
 
     void progress(int);
     void speedBytesSec(int);
-    void finished(QList<Engine::Result>);
+    void finished(bool, QList<Engine::Result>);
 
 private slots:
     void _on_progressTask(int count);
@@ -47,13 +48,14 @@ private:
     qint64 m_bytesOfStatistics; //количество байт для статистики
 
     QThreadPool m_pool;
-    QList<Result> m_completedTasks;
+    QList<Result> m_completedTasks; //список выполненных задач
 
-    QTimer* m_timerSpeed;
+    QTimer* m_timerOfStatistics;
 
     int m_progress;
 
     std::atomic_bool m_canceled;
+    std::mutex m_mutex;
 };
 
 #endif // ENGINE_H
